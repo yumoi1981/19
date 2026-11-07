@@ -1,0 +1,1019 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LIGHTS OUT">
+<meta name="theme-color" content="#0a0d16">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box}body{margin:0;font-size:14px}[hidden]{display:none!important}</style>
+<title>LIGHTS OUT</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;800&family=Zen+Kaku+Gothic+New:wght@400;700&display=swap">
+<style>
+/* Layout: one-screen app — title, mode, opponent, score, square board of city blocks, status/coach, controls */
+:root{
+  --night:#0a0d16; --street:#141a28; --roof-dark:#1b2233; --roof-edge:#2b3550;
+  --lamp:#ffd79a; --lamp-hot:#fff3dc; --mag:#1b2233; --mag-hot:#2b3550;
+  --ink:#d9deea; --muted:#7d879e; --panel:#121827; --cell:#10151f; --on-lamp:#2a1a06;
+  --bgglow:#17203a; --opp:#ff6b6b;
+  --f-display:"Big Shoulders Display","Arial Narrow",sans-serif;
+  --f-body:"Zen Kaku Gothic New","Hiragino Sans",system-ui,sans-serif;
+  color-scheme:dark;
+}
+body.neon{
+  --night:#07040f; --street:#0e0a1f; --roof-edge:#2e2656; --lamp:#38f0ff; --lamp-hot:#d6fdff;
+  --mag:#ff3fbf; --mag-hot:#ffd1f0; --ink:#e8e5ff; --muted:#8c85b4; --panel:#110c24; --cell:#0a0716; --on-lamp:#031418;
+  --bgglow:#2a1150;
+}
+html,body{height:100%}
+body{
+  background:radial-gradient(120% 70% at 50% 0%, var(--bgglow) 0%, var(--night) 60%) var(--night);
+  color:var(--ink); font-family:var(--f-body);
+  padding-left:max(16px, env(safe-area-inset-left,0px)); padding-right:max(16px, env(safe-area-inset-right,0px));
+  overflow:hidden; -webkit-tap-highlight-color:transparent; user-select:none;
+}
+.app{height:100%; display:flex; flex-direction:column; align-items:center; gap:10px; padding-block:12px; box-sizing:border-box; max-width:520px; margin:0 auto}
+h1{font-family:var(--f-display); font-weight:800; font-size:clamp(30px,9vw,44px); letter-spacing:.08em; margin:0; line-height:1;
+  color:var(--lamp-hot); text-shadow:0 0 18px color-mix(in srgb, var(--lamp) 55%, transparent)}
+h1 span{color:var(--muted); text-shadow:none}
+body.neon h1 span{color:var(--mag); text-shadow:0 0 16px var(--mag)}
+button{font-family:var(--f-body); font-size:14px; color:var(--ink); background:transparent; border:1px solid var(--roof-edge);
+  padding:9px 16px; border-radius:999px; cursor:pointer}
+button:focus-visible{outline:2px solid var(--lamp); outline-offset:2px}
+button.primary{background:var(--lamp); color:var(--on-lamp); border-color:var(--lamp); font-weight:700}
+button:disabled{opacity:.35; cursor:default}
+.modes{display:flex; gap:4px; padding:3px; border:1px solid var(--roof-edge); border-radius:999px}
+.modes button{border:0; padding:6px 16px; color:var(--muted)}
+.modes button[aria-pressed="true"]{background:color-mix(in srgb, var(--lamp) 16%, transparent); color:var(--lamp-hot)}
+.opps{display:flex; gap:6px; flex-wrap:wrap; justify-content:center}
+.opps button{padding:5px 11px; font-size:13px; font-family:var(--f-display); letter-spacing:.04em; color:var(--muted)}
+.opps button[aria-pressed="true"]{border-color:var(--lamp); color:var(--lamp-hot)}
+.score{display:flex; width:100%; justify-content:space-between; gap:10px}
+.side{flex:1; min-width:0; display:flex; align-items:center; gap:10px; padding:6px 12px; border-radius:10px; border:1px solid transparent; transition:border-color .3s, background .3s}
+.side.turn{border-color:var(--roof-edge); background:rgba(255,255,255,.03)}
+.side.p2{flex-direction:row-reverse; text-align:right}
+.chip{width:20px; height:20px; border-radius:4px; flex:none}
+.chip.lit{background:var(--lamp); box-shadow:0 0 12px var(--lamp)}
+.chip.dark{background:var(--roof-dark); border:1px solid var(--roof-edge)}
+body.neon .chip.dark{background:var(--mag); border-color:var(--mag); box-shadow:0 0 12px var(--mag)}
+.side .lab{font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.side .num{font-family:var(--f-display); font-size:28px; font-weight:800; line-height:1; font-variant-numeric:tabular-nums}
+.stage{flex:1; min-height:0; width:100%; display:flex; align-items:center; justify-content:center; perspective:900px; touch-action:none}
+.bwrap{display:grid; grid-template-columns:auto auto; grid-template-rows:auto auto; transform-style:preserve-3d}
+.board{
+  position:relative; grid-row:2; grid-column:2;
+  width:min(488px, calc(100vw - 32px), max(240px, calc(100vh - 330px))); aspect-ratio:1;
+  display:grid; grid-template-columns:repeat(8,1fr); gap:4px; padding:6px; box-sizing:border-box;
+  background-color:var(--street); border-radius:8px;
+  background-image:
+    linear-gradient(90deg, transparent 49.6%, color-mix(in srgb, var(--lamp) 7%, transparent) 50%, transparent 50.4%),
+    linear-gradient(0deg, transparent 49.6%, color-mix(in srgb, var(--lamp) 7%, transparent) 50%, transparent 50.4%);
+  box-shadow:0 20px 60px rgba(0,0,0,.6);
+  transform-style:preserve-3d; transition:transform 1.6s cubic-bezier(.2,.7,.2,1);
+}
+body.neon .board{box-shadow:0 0 0 1px color-mix(in srgb, var(--mag) 40%, transparent), 0 0 40px color-mix(in srgb, var(--mag) 25%, transparent), 0 20px 60px rgba(0,0,0,.6)}
+.app.wide .board{width:min(470px, calc(100vw - 50px), max(240px, calc(100vh - 470px)))}
+.lbl{color:var(--muted); font-size:11px; font-family:var(--f-display); letter-spacing:.06em}
+.lbl-top{grid-row:1; grid-column:2; display:grid; grid-template-columns:repeat(8,1fr); gap:4px; padding:0 6px 3px; text-align:center}
+.lbl-left{grid-row:2; grid-column:1; display:grid; grid-template-rows:repeat(8,1fr); gap:4px; padding:6px 4px 6px 0; align-items:center; text-align:right}
+.bwrap:not(.coords) .lbl{display:none}
+.cell{position:relative; border-radius:3px; background:var(--cell); cursor:pointer; transform-style:preserve-3d}
+body.neon .cell{box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--lamp) 9%, transparent)}
+.cell:focus-visible{outline:2px solid var(--lamp); outline-offset:1px}
+.box{position:absolute; inset:9%; transform-style:preserve-3d}
+.bldg{position:absolute; inset:0; border-radius:3px; border:1px solid transparent;
+  transition:background .35s, box-shadow .35s, border-color .35s, transform 1.6s cubic-bezier(.2,.7,.2,1)}
+.bldg.dark{background-color:var(--roof-dark); border-color:var(--roof-edge);
+  background-image:repeating-linear-gradient(90deg, rgba(255,255,255,.03) 0 3px, transparent 3px 7px)}
+.bldg.lit{background-color:var(--lamp); border-color:var(--lamp-hot);
+  background-image:repeating-linear-gradient(90deg, rgba(120,70,20,.25) 0 2px, transparent 2px 6px),
+                   repeating-linear-gradient(0deg, rgba(120,70,20,.25) 0 2px, transparent 2px 6px);
+  box-shadow:0 0 14px rgba(255,200,120,.65), 0 0 2px var(--lamp-hot) inset}
+/* ネオン：両方の石がネオン管のように光る */
+body.neon .bldg.lit{background:color-mix(in srgb, var(--lamp) 22%, #000); border:2px solid var(--lamp);
+  box-shadow:0 0 12px var(--lamp), inset 0 0 10px var(--lamp)}
+body.neon .bldg.dark{background:color-mix(in srgb, var(--mag) 22%, #000); border:2px solid var(--mag);
+  box-shadow:0 0 12px var(--mag), inset 0 0 10px var(--mag)}
+.bldg.pop{animation:pop .45s ease-out}
+@keyframes pop{0%{transform:scale(.6)}60%{transform:scale(1.08)}100%{transform:scale(1)}}
+.bldg.flicker{animation:flicker 1.1s steps(1,end)}
+@keyframes flicker{
+  0%{filter:brightness(.12)} 8%{filter:brightness(1.4)} 12%{filter:brightness(.14)}
+  22%{filter:brightness(1.2)} 26%{filter:brightness(.14)} 45%{filter:brightness(.2)}
+  50%{filter:brightness(1.5)} 55%{filter:brightness(.35)} 60%{filter:brightness(1.3)} 64%{filter:brightness(.4)}
+  72%{filter:brightness(1.6)} 80%{filter:brightness(1.25)} 100%{filter:brightness(1)}}
+.hint::after{content:""; position:absolute; left:50%; top:50%; width:22%; aspect-ratio:1; border-radius:50%;
+  transform:translate(-50%,-50%); background:var(--lamp); opacity:.35; box-shadow:0 0 8px var(--lamp); animation:breathe 1.8s ease-in-out infinite}
+.hint.h2::after{background:var(--mag-hot)}
+body.neon .hint.h2::after{background:var(--mag); box-shadow:0 0 8px var(--mag)}
+@keyframes breathe{50%{opacity:.12}}
+.traffic{position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; z-index:2}
+/* 決着後：カメラが傾き、ビルが立ち上がる */
+.w{position:absolute; transition:transform 1.6s cubic-bezier(.2,.7,.2,1)}
+.w.s{left:0; bottom:0; width:100%; height:var(--h); transform-origin:bottom; transform:rotateX(-90deg) scaleY(0)}
+.w.n{left:0; top:0; width:100%; height:var(--h); transform-origin:top; transform:rotateX(90deg) scaleY(0)}
+.w.wst{left:0; top:0; height:100%; width:var(--h); transform-origin:left; transform:rotateY(-90deg) scaleX(0)}
+.w.e{right:0; top:0; height:100%; width:var(--h); transform-origin:right; transform:rotateY(90deg) scaleX(0)}
+.box.lit .w{background-color:#d99a52;
+  background-image:repeating-linear-gradient(0deg, rgba(60,30,8,.55) 0 2px, transparent 2px 6px),
+                   repeating-linear-gradient(90deg, rgba(60,30,8,.55) 0 2px, transparent 2px 6px)}
+.box.dark .w{background-color:#141a28;
+  background-image:repeating-linear-gradient(0deg, rgba(255,215,154,.07) 0 2px, transparent 2px 7px),
+                   repeating-linear-gradient(90deg, rgba(0,0,0,.35) 0 2px, transparent 2px 6px)}
+body.neon .box.lit .w{background:color-mix(in srgb, var(--lamp) 12%, transparent); box-shadow:inset 0 0 0 1px var(--lamp), inset 0 0 8px color-mix(in srgb, var(--lamp) 50%, transparent)}
+body.neon .box.dark .w{background:color-mix(in srgb, var(--mag) 12%, transparent); box-shadow:inset 0 0 0 1px var(--mag), inset 0 0 8px color-mix(in srgb, var(--mag) 50%, transparent)}
+.w.e,.w.wst{filter:brightness(.72)}
+.board.finale{transform:translateY(10%) rotateX(var(--rx,56deg)) rotateZ(var(--rz,-32deg)) scale(.78)}
+.board.dragging{transition:none}
+.board.finale .bldg{transform:translateZ(var(--h))}
+.board.finale .w.s{transform:rotateX(-90deg) scaleY(1)}
+.board.finale .w.n{transform:rotateX(90deg) scaleY(1)}
+.board.finale .w.wst{transform:rotateY(-90deg) scaleX(1)}
+.board.finale .w.e{transform:rotateY(90deg) scaleX(1)}
+.board.finale .tag{display:none}
+/* 解説の数字 */
+.tag{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; z-index:3;
+  font-family:var(--f-display); font-weight:800; font-size:clamp(12px,3.6vw,17px); text-shadow:0 1px 3px #000; font-variant-numeric:tabular-nums}
+.tag:empty{display:none}
+.tag.played{inset:auto 2px 2px auto; font-size:11px; padding:1px 4px; border-radius:3px; background:rgba(10,13,22,.85); text-shadow:none}
+.t-g0{color:var(--lamp-hot)} .t-g1{color:#a8dcb2} .t-g2{color:#f0b36a} .t-g3{color:#ff8a8a}
+.cell.mark{box-shadow:0 0 0 2px var(--lamp) inset}
+.status{min-height:1.4em; font-size:14px; color:var(--muted); text-align:center; line-height:1.5}
+.status b{color:var(--ink)}
+.app.wide .status{display:none}
+.coach{width:100%; box-sizing:border-box; border:1px solid var(--roof-edge); background:color-mix(in srgb, var(--panel) 85%, transparent); border-radius:12px;
+  padding:12px 14px; font-size:14px; line-height:1.65; max-height:36vh; overflow:auto; user-select:text}
+.coach .hd{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px}
+.coach .who{color:var(--muted); font-size:13px}
+.coach .mv{font-family:var(--f-display); font-weight:800; font-size:20px; letter-spacing:.04em}
+.coach ul{margin:0; padding-left:1.2em}
+.coach li+li{margin-top:2px}
+.coach b{color:var(--lamp-hot); font-weight:700}
+.coach p{margin:0 0 6px}
+.coach .alt{margin:10px 0 2px; color:var(--muted); font-size:13px}
+.coach .note{margin-top:8px; font-size:13px; color:var(--muted)}
+.coach .q{margin-top:8px; padding-top:8px; border-top:1px solid var(--roof-edge); font-weight:700}
+.coach .row{display:flex; justify-content:flex-end; gap:8px; margin-top:10px; flex-wrap:wrap}
+.coach .row button{padding:8px 18px}
+.menu{display:grid; gap:6px; margin-top:8px}
+.menu button{display:flex; justify-content:space-between; align-items:center; gap:10px; border-radius:10px; text-align:left; padding:10px 12px}
+.menu .no{font-family:var(--f-display); font-weight:800; color:var(--muted); width:1.4em; flex:none}
+.menu .tt{flex:1}
+.menu .stars{font-size:12px; color:var(--lamp); letter-spacing:.1em; flex:none}
+.pill{font-size:12px; padding:2px 10px; border-radius:999px; font-weight:700; color:#1a1206}
+.g0{background:var(--lamp)} .g1{background:#a8dcb2} .g2{background:#f0b36a} .g3{background:#ff8a8a}
+body.neon .g0{color:var(--on-lamp)}
+.thinking{color:var(--muted)}
+.coach details.more{margin-top:4px}
+.coach summary{cursor:pointer; color:var(--muted); font-size:13px; list-style:none; padding:2px 0}
+.coach summary::-webkit-details-marker{display:none}
+.coach summary::before{content:"▸ "}
+.coach details[open] summary::before{content:"▾ "}
+.coach details.more ul{margin-top:2px}
+.coach p.alt{margin:4px 0}
+/* 相手が打てるマス（赤い輪） */
+.cell.opp::before{content:""; position:absolute; left:7%; top:7%; width:28%; aspect-ratio:1; border-radius:50%; box-sizing:border-box;
+  border:2px solid var(--opp); box-shadow:0 0 6px var(--opp); z-index:4; pointer-events:none}
+.board.finale .cell.opp::before{display:none}
+.coach .mob{margin:4px 0; padding:6px 10px; border-radius:8px; background:color-mix(in srgb, var(--opp) 12%, transparent); font-size:13px}
+.coach .mob .dot{display:inline-block; width:9px; height:9px; border-radius:50%; border:2px solid var(--opp); vertical-align:-1px; margin-right:4px}
+.coach .up{color:var(--opp); font-weight:700} .coach .down{color:#a8dcb2; font-weight:700}
+.chart{width:100%; height:auto; display:block; margin-top:6px}
+.legend{display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin-top:8px}
+.legend i{display:inline-block; width:14px; height:3px; border-radius:2px; vertical-align:middle; margin-right:4px}
+.controls{display:flex; gap:8px; flex-wrap:wrap; justify-content:center}
+/* 設定シート */
+.sheet{position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:flex-end; justify-content:center; z-index:20}
+.sheet .panel{width:100%; max-width:520px; box-sizing:border-box; background:var(--panel); border:1px solid var(--roof-edge); border-bottom:0; border-radius:16px 16px 0 0;
+  padding:16px max(18px, env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(18px, env(safe-area-inset-left,0px)); max-height:86vh; overflow:auto}
+.panel h2{font-family:var(--f-display); font-weight:800; letter-spacing:.06em; font-size:22px; margin:0 0 6px; display:flex; justify-content:space-between; align-items:center}
+.set{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid var(--roof-edge)}
+.set .k{font-size:14px} .set .d{font-size:12px; color:var(--muted)}
+.seg{display:flex; gap:4px; padding:3px; border:1px solid var(--roof-edge); border-radius:999px}
+.seg button{border:0; padding:5px 12px; font-size:13px; color:var(--muted)}
+.seg button[aria-pressed="true"]{background:color-mix(in srgb, var(--lamp) 16%, transparent); color:var(--lamp-hot)}
+.sw{width:50px; height:28px; padding:0; position:relative; border-radius:999px; background:var(--roof-edge); border:0; flex:none}
+.sw::after{content:""; position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:50%; background:var(--ink); transition:transform .2s}
+.sw[aria-pressed="true"]{background:var(--lamp)}
+.sw[aria-pressed="true"]::after{transform:translateX(22px); background:var(--on-lamp)}
+.rec{width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; font-variant-numeric:tabular-nums}
+.rec th,.rec td{padding:6px 4px; text-align:center; border-bottom:1px solid var(--roof-edge)}
+.rec th{color:var(--muted); font-weight:400}
+.rec td:first-child,.rec th:first-child{text-align:left; font-family:var(--f-display); font-weight:800; letter-spacing:.04em}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+
+</head>
+<body>
+<div class="app" id="app">
+  <h1>LIGHTS <span>OUT</span></h1>
+  <div class="modes" role="group" aria-label="モード">
+    <button id="mBattle" aria-pressed="true">対戦</button><button id="mTrain" aria-pressed="false">トレーニング</button>
+  </div>
+  <div class="opps" id="opps" role="group" aria-label="対戦相手">
+    <button data-opp="1">Lv.1</button><button data-opp="2">Lv.2</button><button data-opp="3">Lv.3</button><button data-opp="4">Lv.4</button><button data-opp="5">Lv.5</button><button data-opp="pvp">2人</button>
+  </div>
+  <div class="score">
+    <div class="side" id="side1"><span class="chip lit"></span><div style="min-width:0"><div class="lab" id="lab1">あなた（明かり）</div><div class="num" id="n1">2</div></div></div>
+    <div class="side p2" id="side2"><span class="chip dark"></span><div style="min-width:0"><div class="lab" id="lab2">CPU Lv.3（消灯）</div><div class="num" id="n2">2</div></div></div>
+  </div>
+  <div class="stage" id="stage"><div class="bwrap" id="bwrap">
+    <div class="lbl lbl-top"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span></div>
+    <div class="lbl lbl-left"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div>
+    <div class="board" id="board" role="grid" aria-label="盤面"></div>
+  </div></div>
+  <div class="status" id="status"></div>
+  <div class="coach" id="coach" hidden></div>
+  <div class="controls">
+    <button id="restart" class="primary">新しいゲーム</button>
+    <button id="undo">待った</button>
+    <button id="openSet">設定</button>
+  </div>
+</div>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="panel" role="dialog" aria-label="設定">
+    <h2>設定 <button id="closeSet">閉じる</button></h2>
+    <div class="set"><div><div class="k">テーマ</div><div class="d">盤面・石・音楽が切り替わります</div></div>
+      <div class="seg" id="themeSeg"><button data-theme-v="night">夜景</button><button data-theme-v="neon">ネオン</button></div></div>
+    <div class="set"><div><div class="k">音楽・効果音</div></div><button class="sw" id="swSound" aria-label="音楽・効果音"></button></div>
+    <div class="set"><div><div class="k">置ける場所の表示</div><div class="d">打てるマスがうっすら光ります</div></div><button class="sw" id="swHints" aria-label="置ける場所の表示"></button></div>
+    <div class="set"><div><div class="k">待った</div><div class="d">対戦中に1手戻せます</div></div><button class="sw" id="swUndo" aria-label="待った"></button></div>
+    <div style="margin-top:14px; font-weight:700">CPUとの成績</div>
+    <table class="rec" id="recTable"></table>
+    <div class="row" style="display:flex; justify-content:flex-end; margin-top:10px"><button id="resetRec">成績をリセット</button></div>
+  </div>
+</div>
+
+<script>
+/* ===== 保存（この端末のブラウザ内） ===== */
+const Store={
+  get(k,d){ try{ const v=localStorage.getItem('lightsout.'+k); return v?JSON.parse(v):d }catch(_){ return d } },
+  set(k,v){ try{ localStorage.setItem('lightsout.'+k,JSON.stringify(v)) }catch(_){} },
+  del(k){ try{ localStorage.removeItem('lightsout.'+k) }catch(_){} }
+};
+const S=Object.assign({theme:'night',sound:true,hints:true,undo:true,opp:'3'},Store.get('settings',{}));
+const saveSettings=()=>Store.set('settings',S);
+let REC=Store.get('records',{}); for(let i=1;i<=5;i++) REC[i]=REC[i]||{w:0,l:0,d:0};
+let PROG=Store.get('lessons',{});
+
+/* ===== 音（すべてプログラムで生成） ===== */
+const Snd=(()=>{
+  let ac=null, master, bgmBus, sfxBus, verb, on=S.sound, timer=null, nextT=0, step=0, theme=S.theme, NB=null, hum=null;
+  const mtof=m=>440*Math.pow(2,(m-69)/12);
+  function init(){
+    if(ac) return;
+    ac=new (window.AudioContext||window.webkitAudioContext)();
+    master=ac.createGain(); master.gain.value=.9; master.connect(ac.destination);
+    verb=ac.createConvolver(); const len=ac.sampleRate*2.4, ir=ac.createBuffer(2,len,ac.sampleRate);
+    for(let ch=0;ch<2;ch++){const d=ir.getChannelData(ch);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3)}
+    verb.buffer=ir; const vg=ac.createGain(); vg.gain.value=.28; verb.connect(vg); vg.connect(master);
+    bgmBus=ac.createGain(); bgmBus.gain.value=.2; bgmBus.connect(master); bgmBus.connect(verb);
+    sfxBus=ac.createGain(); sfxBus.gain.value=.55; sfxBus.connect(master); sfxBus.connect(verb);
+  }
+  const noiseBuf=()=>{const b=ac.createBuffer(1,ac.sampleRate,ac.sampleRate),d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;return b};
+  function noise(t,dur,{type='highpass',freq=6000,q=.7,gain=.2,bus}={}){
+    NB=NB||noiseBuf(); const s=ac.createBufferSource(); s.buffer=NB;
+    const f=ac.createBiquadFilter(); f.type=type; f.frequency.value=freq; f.Q.value=q;
+    const g=ac.createGain(); g.gain.setValueAtTime(gain,t); g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    s.connect(f); f.connect(g); g.connect(bus||sfxBus); s.start(t,Math.random()*.5); s.stop(t+dur+.02);
+  }
+  function tone(t,m,dur,{type='sine',gain=.2,attack=.008,bus,detune=0,cut=0}={}){
+    const o=ac.createOscillator(); o.type=type; o.frequency.value=mtof(m); o.detune.value=detune;
+    const g=ac.createGain(); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(gain,t+attack); g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    let src=o; if(cut){ const f=ac.createBiquadFilter(); f.type='lowpass'; f.frequency.value=cut; o.connect(f); src=f }
+    src.connect(g); g.connect(bus||sfxBus); o.start(t); o.stop(t+dur+.05);
+  }
+  function rhodes(t,m,dur,gain=.09){ tone(t,m,dur,{gain,attack:.01,bus:bgmBus}); tone(t,m+12,dur*.35,{gain:gain*.35,attack:.005,bus:bgmBus,detune:4}) }
+  // 夜景：ゆったりした夜のジャズ
+  const J={BEAT:60/78, CH:[{root:38,v:[53,57,60,64]},{root:43,v:[53,57,59,64]},{root:36,v:[52,55,59,62]},{root:45,v:[55,59,60,64]}], SC:[62,64,67,69,71,72,74,76,79]};
+  function jazz(t,s){
+    const B=J.BEAT, bar=Math.floor(s/4)%4, beat=s%4, ch=J.CH[bar], nx=J.CH[(bar+1)%4], sw=B*.66;
+    tone(t,[ch.root,ch.root+7,ch.root+12,nx.root-1][beat],B*.9,{type:'triangle',gain:.22,attack:.015,bus:bgmBus});
+    if(beat===0) ch.v.forEach((m,i)=>rhodes(t+i*.012,m,B*2.2));
+    if(beat===1&&Math.random()<.7) ch.v.forEach(m=>rhodes(t+sw,m,B*1.2,.06));
+    noise(t,.09,{freq:7000,gain:beat%2?.07:.035,bus:bgmBus}); noise(t+sw,.05,{freq:8000,gain:.025,bus:bgmBus});
+    if(Math.random()<.32) rhodes(t+(Math.random()<.5?0:sw),J.SC[Math.floor(Math.random()*J.SC.length)]+12,B*1.5,.05);
+    return B;
+  }
+  // ネオン：電子音のシンセウェーブ（8分音符単位）
+  const E={STEP:60/112/2, CH:[{r:45,v:[57,60,64]},{r:41,v:[53,57,60]},{r:48,v:[55,60,64]},{r:43,v:[55,59,62]}]};
+  function synth(t,s){
+    const T=E.STEP, bar=Math.floor(s/8)%4, k=s%8, ch=E.CH[bar];
+    if(k%2===0){ const o=ac.createOscillator(), g=ac.createGain(); o.frequency.setValueAtTime(130,t); o.frequency.exponentialRampToValueAtTime(42,t+.18);
+      g.gain.setValueAtTime(.55,t); g.gain.exponentialRampToValueAtTime(.0001,t+.25); o.connect(g); g.connect(bgmBus); o.start(t); o.stop(t+.3) }
+    if(k===2||k===6) noise(t,.16,{type:'bandpass',freq:1800,q:.8,gain:.22,bus:bgmBus});
+    noise(t,.03,{freq:9000,gain:k%2?.06:.03,bus:bgmBus});
+    tone(t,ch.r-12+(k%2?12:0),T*.9,{type:'sawtooth',gain:.12,attack:.005,bus:bgmBus,cut:500});
+    tone(t,ch.v[k%3]+12,T*.8,{type:'square',gain:.035,attack:.003,bus:bgmBus,cut:2400});
+    if(k===0) ch.v.forEach(m=>tone(t,m,T*7,{type:'sawtooth',gain:.025,attack:.25,bus:bgmBus,cut:1200,detune:7}));
+    return T;
+  }
+  function tick(){ while(nextT<ac.currentTime+.15){ nextT+=(theme==='neon'?synth:jazz)(nextT,step); step++ } }
+  function startHum(){
+    if(hum) return; NB=NB||noiseBuf();
+    const s=ac.createBufferSource(); s.buffer=NB; s.loop=true;
+    const f=ac.createBiquadFilter(); f.type='lowpass'; f.frequency.value=380;
+    const g=ac.createGain(); g.gain.value=.05; s.connect(f); f.connect(g); g.connect(bgmBus); s.start(); hum=s;
+  }
+  function startBgm(){ if(!on||!ac||timer) return; nextT=ac.currentTime+.1; step=0; if(theme==='night') startHum(); timer=setInterval(tick,30) }
+  function stopBgm(){ clearInterval(timer); timer=null; if(hum){hum.stop();hum=null} }
+  const ok=()=>on&&ac;
+  return {
+    unlock(){ init(); if(ac.state==='suspended') ac.resume(); startBgm() },
+    setOn(v){ on=v; if(!ac) init(); if(on){ ac.resume(); startBgm() } else stopBgm() },
+    setTheme(t){ theme=t; if(timer){ stopBgm(); startBgm() } },
+    // 蛍光灯（ネオン管）の点滅に合わせた「ジジッ」と点灯音
+    flicker(){
+      if(!ok()) return; const t=ac.currentTime;
+      [[0.088,.044],[0.242,.044],[0.55,.055],[0.66,.044],[0.79,.4]].forEach(([s,d])=>{
+        noise(t+s,.015,{freq:3000,gain:.18});
+        const o=ac.createOscillator(); o.type='sawtooth'; o.frequency.value=100;
+        const f=ac.createBiquadFilter(); f.type='bandpass'; f.frequency.value=900; f.Q.value=3;
+        const g=ac.createGain(); g.gain.setValueAtTime(.0001,t+s); g.gain.linearRampToValueAtTime(.12,t+s+.005); g.gain.setValueAtTime(.12,t+s+d); g.gain.exponentialRampToValueAtTime(.0001,t+s+d+.08);
+        o.connect(f); f.connect(g); g.connect(sfxBus); o.start(t+s); o.stop(t+s+d+.1);
+      });
+      tone(t+.79,84,.9,{gain:.1}); tone(t+.79,91,.7,{gain:.05});
+    },
+    thud(){ if(!ok()) return; const t=ac.currentTime; tone(t,45,.25,{type:'triangle',gain:.3}); noise(t,.06,{type:'lowpass',freq:600,gain:.25}) },
+    flips(n,lit){
+      if(!ok()) return; const t=ac.currentTime+.06, neon=theme==='neon';
+      for(let i=0;i<n;i++){
+        const m=lit? J.SC[Math.min(i,8)]+12 : 64-[0,3,5,7,10,12,15,17][Math.min(i,7)];
+        tone(t+i*.045,m,lit?.5:.3,{type:neon?'square':(lit?'sine':'triangle'),gain:neon?.05:(lit?.12:.13),cut:neon?3000:0});
+      }
+    },
+    pass(){ if(!ok()) return; const t=ac.currentTime; tone(t,67,.3,{gain:.1}); tone(t+.15,62,.4,{gain:.1}) },
+    good(){ if(!ok()) return; const t=ac.currentTime; [72,76,79].forEach((m,i)=>tone(t+i*.08,m,.5,{gain:.1})) },
+    end(win){
+      if(!ok()) return; const t=ac.currentTime+.3;
+      noise(t,1.6,{type:'bandpass',freq:500,q:.5,gain:.12});
+      (win===1?[60,64,67,71,74,79]:win===-1?[69,65,62,57,53]:[62,67,62,67]).forEach((m,i)=>tone(t+.5+i*.16,m,1.4,{gain:.12}));
+    }
+  };
+})();
+
+/* ===== 盤のルール ===== */
+const N=8, EMPTY=0, LIT=1, DARK=-1;
+const DIRS=[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+// Lv.3：盤面の場所ごとの価値（角は高く、角の隣は低く）
+const W=[
+ [100,-20,10, 5, 5,10,-20,100],
+ [-20,-50,-2,-2,-2,-2,-50,-20],
+ [ 10, -2,-1,-1,-1,-1, -2, 10],
+ [  5, -2,-1,-1,-1,-1, -2,  5],
+ [  5, -2,-1,-1,-1,-1, -2,  5],
+ [ 10, -2,-1,-1,-1,-1, -2, 10],
+ [-20,-50,-2,-2,-2,-2,-50,-20],
+ [100,-20,10, 5, 5,10,-20,100]];
+function flips(b,r,c,p){
+  if(b[r][c]!==EMPTY) return [];
+  const out=[];
+  for(const [dr,dc] of DIRS){
+    const line=[]; let y=r+dr,x=c+dc;
+    while(y>=0&&y<N&&x>=0&&x<N&&b[y][x]===-p){line.push([y,x]); y+=dr; x+=dc}
+    if(line.length&&y>=0&&y<N&&x>=0&&x<N&&b[y][x]===p) out.push(...line);
+  }
+  return out;
+}
+function moves(b,p){const m=[];for(let r=0;r<N;r++)for(let c=0;c<N;c++){const f=flips(b,r,c,p);if(f.length)m.push({r,c,f})}return m}
+
+/* ===== レベル5：理由を説明できる思考エンジン（Lv.4は浅い読み） =====
+   判断材料：角／Xマス・Cマス／相手の打てる場所の数／開放度／確定石／先読み／終盤の読み切り */
+const AI=(()=>{
+  const RAYS=[], NEI=[];
+  for(let i=0;i<64;i++){
+    const r=i>>3,c=i&7,rs=[],nb=[];
+    for(const [dr,dc] of DIRS){
+      const ray=[]; let y=r+dr,x=c+dc;
+      if(y>=0&&y<8&&x>=0&&x<8) nb.push(y*8+x);
+      while(y>=0&&y<8&&x>=0&&x<8){ray.push(y*8+x); y+=dr; x+=dc}
+      if(ray.length>1) rs.push(ray);
+    }
+    RAYS.push(rs); NEI.push(nb);
+  }
+  const CORNERS=[0,7,56,63], XSQ={9:0,14:7,49:56,54:63}, CSQ={1:0,8:0,6:7,15:7,48:56,57:56,55:63,62:63};
+  const ORDER=[...Array(64).keys()].sort((a,b)=>W[b>>3][b&7]-W[a>>3][a&7]);
+  const nm=i=>'abcdefgh'[i&7]+((i>>3)+1);
+  function flipsOf(b,i,p){
+    if(b[i]) return null; let out=null;
+    for(const ray of RAYS[i]){ let k=0; while(k<ray.length&&b[ray[k]]===-p) k++;
+      if(k>0&&k<ray.length&&b[ray[k]]===p){ out=out||[]; for(let j=0;j<k;j++) out.push(ray[j]) } }
+    return out;
+  }
+  function canPlay(b,i,p){
+    if(b[i]) return false;
+    for(const ray of RAYS[i]){ let k=0; while(k<ray.length&&b[ray[k]]===-p) k++; if(k>0&&k<ray.length&&b[ray[k]]===p) return true }
+    return false;
+  }
+  function movesOf(b,p){ const ms=[]; for(const i of ORDER){ const f=flipsOf(b,i,p); if(f) ms.push({i,f}) } return ms }
+  function mob(b,p){ let n=0; for(let i=0;i<64;i++) if(canPlay(b,i,p)) n++; return n }
+  function play(b,m,p){ const n=b.slice(); n[m.i]=p; for(const j of m.f) n[j]=p; return n }
+  function frontier(b,p){ let n=0; for(let i=0;i<64;i++) if(b[i]===p){ for(const j of NEI[i]) if(!b[j]){n++;break} } return n }
+  function evalB(b,p){
+    let s=0,e=0,d=0;
+    for(let i=0;i<64;i++){ if(!b[i]) e++; else d+=b[i]*p }
+    for(const c of CORNERS) s+=30*b[c]*p;
+    for(const x in XSQ) if(!b[XSQ[x]]) s-=15*b[x]*p;
+    for(const c in CSQ) if(!b[CSQ[c]]) s-=6*b[c]*p;
+    s+=4*(mob(b,p)-mob(b,-p));
+    s-=1.5*(frontier(b,p)-frontier(b,-p));
+    if(e<=20) s+=d*(1+(20-e)/10);
+    return s;
+  }
+  const diff=(b,p)=>{let d=0;for(let i=0;i<64;i++)d+=b[i]*p;return d};
+  function nega(b,p,depth,a,be,passed,exact){
+    if(!exact&&depth<=0) return evalB(b,p);
+    const ms=movesOf(b,p);
+    if(!ms.length){
+      if(passed){ const d=diff(b,p); return exact? d : d*1000 }
+      return -nega(b,-p,depth,-be,-a,true,exact);
+    }
+    let best=-Infinity;
+    for(const m of ms){
+      const v=-nega(play(b,m,p),-p,depth-1,-be,-a,false,exact);
+      if(v>best) best=v; if(v>a) a=v; if(a>=be) break;
+    }
+    return best;
+  }
+  function stableSet(b){
+    const st=new Uint8Array(64), AX=[[0,1],[1,0],[1,1],[1,-1]]; let ch=true;
+    const side=(r,c,dr,dc,v)=>{const y=r+dr,x=c+dc; if(y<0||y>7||x<0||x>7) return true; return st[y*8+x]&&b[y*8+x]===v};
+    const full=(r,c,dr,dc)=>{for(const s of [1,-1]){let y=r+dr*s,x=c+dc*s; while(y>=0&&y<8&&x>=0&&x<8){ if(!b[y*8+x]) return false; y+=dr*s; x+=dc*s }} return true};
+    while(ch){ ch=false;
+      for(let i=0;i<64;i++){ if(!b[i]||st[i]) continue; const r=i>>3,c=i&7; let ok=true;
+        for(const [dr,dc] of AX){ if(!(side(r,c,dr,dc,b[i])||side(r,c,-dr,-dc,b[i])||full(r,c,dr,dc))){ok=false;break} }
+        if(ok){st[i]=1; ch=true} } }
+    return st;
+  }
+  const stableCount=(b,p)=>{const s=stableSet(b);let n=0;for(let i=0;i<64;i++)if(s[i]&&b[i]===p)n++;return n};
+  // 盤面を分析して、全候補手の点数と特徴を返す
+  function analyze(B2,p,opt={}){
+    const depth=opt.depth||5, exactAt=opt.exactAt==null?10:opt.exactAt;
+    const b=new Int8Array(64); for(let i=0;i<64;i++) b[i]=B2[i>>3][i&7];
+    let empties=0; for(let i=0;i<64;i++) if(!b[i]) empties++;
+    const exact=empties<=exactAt;
+    const ms=movesOf(b,p); if(!ms.length) return null;
+    const oppCornersBefore=new Set(CORNERS.filter(c=>canPlay(b,c,-p)));
+    const stBefore=stableCount(b,p);
+    const cands=ms.map(m=>{
+      const nb=play(b,m,p), oms=movesOf(nb,-p);
+      let score, reply=null;
+      if(!oms.length){ score=nega(nb,p,depth-2,-Infinity,Infinity,true,exact) }
+      else{
+        let bo=-Infinity;
+        for(const om of oms){ const v=-nega(play(nb,om,-p),p,depth-2,-Infinity,-bo,false,exact); if(v>bo){bo=v; reply=om.i} }
+        score=-bo;
+      }
+      if(!exact) score=Math.round(score);
+      let open=0; const seen=new Set();
+      for(const j of m.f) for(const k of NEI[j]) if(!nb[k]&&!seen.has(k)){seen.add(k);open++}
+      return { i:m.i, r:m.i>>3, c:m.i&7, f:m.f.map(j=>[j>>3,j&7]), score, reply, static:evalB(nb,p), opMob:oms.length, open,
+        flips:m.f.length, stable:stableCount(nb,p)-stBefore, corner:CORNERS.includes(m.i),
+        x:(m.i in XSQ)&&!b[XSQ[m.i]], cs:(m.i in CSQ)&&!b[CSQ[m.i]],
+        givesCorner:CORNERS.filter(c=>!oppCornersBefore.has(c)&&oms.some(o=>o.i===c)) };
+    });
+    const byStatic=[...cands].sort((a,b)=>b.static-a.static);
+    cands.forEach(c=>c.staticRank=byStatic.indexOf(c));
+    const best=[...cands].sort((a,b)=>b.score-a.score||b.static-a.static)[0];
+    return {cands,best,exact,depth,empties};
+  }
+  const loss=(an,c)=>an.best.score-c.score;
+  function grade(an,c){
+    const d=loss(an,c);
+    if(d<=0) return {g:0,label:'最善'};
+    if(d<=3) return {g:1,label:'好手'};
+    if(d<=10) return {g:2,label:'疑問手'};
+    return {g:3,label:'悪手'};
+  }
+  const lossText=(an,c)=>{const d=loss(an,c); return d<=0?'◎':d>99?'−99+':'−'+d};
+  function reasons(an,c){
+    const R=[], mobs=an.cands.map(x=>x.opMob), minM=Math.min(...mobs), maxM=Math.max(...mobs);
+    if(an.exact) R.push([100, c.score>0?`最後まで読み切ると<b>${c.score}石差で勝ち</b>になる手`:c.score<0?`最後まで読み切ると<b>${-c.score}石差で負け</b>になる手`:'最後まで読み切ると<b>引き分け</b>になる手']);
+    if(!an.exact&&Math.abs(c.score)>=1000) R.push([98, c.score>0?`${an.depth}手先までに<b>相手の石を全滅</b>させられる`:`${an.depth}手先までに<b>自分の石が全滅</b>してしまう`]);
+    if(c.corner) R.push([95,'<b>角</b>を取る。角の石は二度と返されず、そこから辺を固められる']);
+    if(c.givesCorner.length) R.push([90,true,`この手のあと、相手が<b>角（${c.givesCorner.map(nm).join('・')}）</b>を取れるようになってしまう`]);
+    if(c.x) R.push([85,true,'角の斜め隣の<b>Xマス</b>。角が空いているうちに打つと、相手に角を取られる原因になる']);
+    if(c.cs) R.push([55,true,'角の隣の<b>Cマス</b>。角が空いていると、辺の取り合いで角を取られやすい']);
+    if(c.stable>=1) R.push([60,`<b>確定石</b>（もう返されない石）が${c.stable}個増える`]);
+    if(maxM-minM>=2&&c.opMob===minM) R.push([58,`相手の打てる場所を<b>${c.opMob}か所</b>に絞れる（候補の中で最少）。打てる場所が少ないほど相手は苦しくなる`]);
+    else if(maxM-minM>=2&&c.opMob===maxM) R.push([58,true,`相手の打てる場所が<b>${c.opMob}か所</b>に増えてしまう（候補の中で最多）`]);
+    if(c.open<=1) R.push([45,`<b>開放度${c.open}</b>：返した石のまわりに空きマスがほとんどなく、相手に新しい手を与えにくい`]);
+    else if(c.open>=7) R.push([45,true,`<b>開放度${c.open}</b>：返した石のまわりに空きマスが多く、相手に手を与えやすい`]);
+    if(!an.exact&&an.empties>20&&c.flips>=5) R.push([35,true,`一度に${c.flips}枚返している。序盤〜中盤は返しすぎると相手の打てる場所が増えやすい`]);
+    if(!an.exact&&c.reply!=null){
+      if(c.staticRank===0&&c!==an.best) R.push([75,true,`パッと見は一番よい手だが、${an.depth}手先まで読むと相手に<b>${nm(c.reply)}</b>と打たれて苦しくなる`]);
+      else if(c===an.best) R.push([20,`${an.depth}手先まで読み、相手の最善の応手は<b>${nm(c.reply)}</b>と予想`]);
+    }
+    if(!R.length) R.push([10,'大きな損も得もない、落ち着いた手']);
+    const T=x=>x[x.length-1], neg=x=>x[1]===true;
+    if(c===an.best){
+      // 最善手は良い理由を先に。マイナス面しかなければ「ほかより損が少ない」と添える
+      R.sort((a,b)=>(neg(a)-neg(b))||(b[0]-a[0]));
+      if((neg(R[0])||R[0][0]<=20)&&an.cands.length>1) R.unshift([0,`${R.some(neg)?'マイナス面はあるが、':''}${an.exact?'最後まで':an.depth+'手先まで'}読むと<b>${an.cands.length}つの候補の中で一番損が少ない</b>`]);
+      return R.slice(0,3).map(T);
+    }
+    return R.sort((a,b)=>b[0]-a[0]).slice(0,3).map(T);
+  }
+  return {analyze,grade,reasons,lossText,loss,nm};
+})();
+
+/* ===== CPUの5段階 ===== */
+function cpuPick(level,p){
+  const ms=moves(B,p), rnd=a=>a[Math.floor(Math.random()*a.length)];
+  const top=(arr,f)=>{ let best=-Infinity,pick=[]; for(const m of arr){ const s=f(m); if(s>best){best=s;pick=[m]} else if(s===best) pick.push(m) } return rnd(pick) };
+  if(level===1) return Math.random()<.25 ? top(ms,m=>-W[m.r][m.c]) : rnd(ms);   // ほぼランダム、たまにわざと悪手
+  if(level===2) return top(ms,m=>m.f.length);                                     // たくさん返せる手
+  if(level===3) return top(ms,m=>W[m.r][m.c]);                                   // 角重視・角の隣を避ける
+  const an=AI.analyze(B,p, level===4?{depth:3,exactAt:0}:{depth:5,exactAt:10});  // Lv.4：2〜3手読み／Lv.5：5手読み＋残り10マスから読み切り
+  return {r:an.best.r, c:an.best.c, f:an.best.f};
+}
+
+/* ===== 状態 ===== */
+let B, turn=LIT, busy=false, over=false, mode='battle', phase='play', gid=0, hist=[], youAn=null, lesson=null, rx=56, rz=-32;
+const $=id=>document.getElementById(id);
+const appEl=$('app'), boardEl=$('board'), coachEl=$('coach'), cells=[];
+const isCpuGame=()=>mode==='battle'&&S.opp!=='pvp';
+const level=()=>+S.opp;
+const sideName=p=>S.theme==='neon'?(p===LIT?'シアン':'マゼンタ'):(p===LIT?'明かり':'消灯');
+
+for(let r=0;r<N;r++)for(let c=0;c<N;c++){
+  const d=document.createElement('div'); d.className='cell'; d.tabIndex=0; d.setAttribute('role','gridcell');
+  d.setAttribute('aria-label',AI.nm(r*8+c));
+  const box=document.createElement('div'); box.className='box';
+  box.innerHTML='<div class="w s"></div><div class="w n"></div><div class="w wst"></div><div class="w e"></div><div class="bldg"></div>';
+  d.appendChild(box);
+  const tg=document.createElement('span'); tg.className='tag'; d.appendChild(tg);
+  d.addEventListener('click',()=>tap(r,c));
+  d.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();tap(r,c)}});
+  boardEl.appendChild(d); cells.push(d);
+}
+const cellAt=(r,c)=>cells[r*N+c];
+const roof=(r,c)=>cellAt(r,c).querySelector('.bldg');
+
+/* ===== 夜の通り：車と通行人 ===== */
+const Traffic=(()=>{
+  const cv=document.createElement('canvas'); cv.className='traffic'; boardEl.appendChild(cv);
+  const ctx=cv.getContext('2d'); let W0=0,H0=0,dpr=1, hs=[], vs=[], ents=[], last=0;
+  const still=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function layout(){
+    const w=boardEl.clientWidth, h=boardEl.clientHeight; if(!w) return;
+    dpr=Math.min(2,window.devicePixelRatio||1); W0=w; H0=h; cv.width=w*dpr; cv.height=h*dpr;
+    const mid=(a,b)=>(a+b)/2;
+    hs=[mid(0,cells[0].offsetTop)]; vs=[mid(0,cells[0].offsetLeft)];
+    for(let i=0;i<7;i++){
+      const a=cellAt(i,0), b=cellAt(i+1,0); hs.push(mid(a.offsetTop+a.offsetHeight,b.offsetTop));
+      const c=cellAt(0,i), d=cellAt(0,i+1); vs.push(mid(c.offsetLeft+c.offsetWidth,d.offsetLeft));
+    }
+    const lc=cellAt(7,7); hs.push(mid(lc.offsetTop+lc.offsetHeight,h)); vs.push(mid(lc.offsetLeft+lc.offsetWidth,w));
+    if(!ents.length) spawn();
+  }
+  const rnd=(a,b)=>a+Math.random()*(b-a);
+  function newEnt(kind){
+    const axis=Math.random()<.5?'h':'v', lines=axis==='h'?hs:vs, len=axis==='h'?W0:H0, dir=Math.random()<.5?1:-1;
+    return {kind, axis, k:Math.floor(Math.random()*lines.length), dir, pos:rnd(0,len),
+      v:kind==='car'?rnd(22,48):rnd(3,7), lane:kind==='car'?dir*0.9:(Math.random()<.5?-1.4:1.4), wait:0};
+  }
+  function spawn(){ ents=[]; for(let i=0;i<16;i++) ents.push(newEnt('car')); for(let i=0;i<22;i++) ents.push(newEnt('ped')) }
+  function draw(dt){
+    const neon=document.body.classList.contains('neon');
+    ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W0,H0);
+    for(const e of ents){
+      const len=e.axis==='h'?W0:H0;
+      if(e.wait>0) e.wait-=dt; else e.pos+=e.dir*e.v*dt;
+      if(e.kind==='ped'&&Math.random()<dt*.15) e.wait=rnd(.5,2.5); // 立ち止まる人
+      if(e.pos<-8||e.pos>len+8){ Object.assign(e,newEnt(e.kind)); e.pos=e.dir>0?-6:len+6 }
+      const base=(e.axis==='h'?hs:vs)[e.k]+e.lane;
+      const P=(along,across=0)=>e.axis==='h'?[along,base+across]:[base+across,along];
+      if(e.kind==='car'){
+        const [tx,ty]=P(e.pos-e.dir*4); ctx.fillStyle=neon?'rgba(255,63,191,.95)':'rgba(255,60,50,.9)'; ctx.fillRect(tx-.8,ty-.8,1.6,1.6);
+        const [hx,hy]=P(e.pos+e.dir*1.5), col=neon?'200,250,255':'255,248,225';
+        const g=ctx.createRadialGradient(hx,hy,0,hx,hy,4); g.addColorStop(0,`rgba(${col},.95)`); g.addColorStop(1,`rgba(${col},0)`);
+        ctx.fillStyle=g; ctx.beginPath(); ctx.arc(hx,hy,4,0,Math.PI*2); ctx.fill();
+      }else{
+        const [px,py]=P(e.pos); ctx.fillStyle=neon?'rgba(190,170,255,.7)':'rgba(170,185,215,.65)'; ctx.beginPath(); ctx.arc(px,py,.9,0,Math.PI*2); ctx.fill();
+      }
+    }
+  }
+  function loop(t){ const dt=Math.min(.05,(t-last)/1000||0); last=t; if(W0) draw(still?0:dt); if(!still) requestAnimationFrame(loop) }
+  addEventListener('resize',layout);
+  return { start(){ layout(); requestAnimationFrame(loop) }, layout };
+})();
+
+/* ===== 描画 ===== */
+function count(p){let n=0;for(const row of B)for(const v of row)if(v===p)n++;return n}
+function humanToMove(){
+  if(over||busy) return false;
+  if(mode==='battle') return S.opp==='pvp' || turn===LIT;
+  if(mode==='review') return phase==='you';
+  if(mode==='lesson'||mode==='drill') return phase==='ask';
+  return false;
+}
+function render(popList=[], flickerFirst=false){
+  const showHints=S.hints&&humanToMove(), hintMoves=showHints?moves(B,turn):[];
+  for(let r=0;r<N;r++)for(let c=0;c<N;c++){
+    const el=cellAt(r,c), box=el.firstChild, b=roof(r,c), v=B[r][c];
+    box.className='box'+(v===LIT?' lit':v===DARK?' dark':'');
+    b.classList.toggle('lit',v===LIT); b.classList.toggle('dark',v===DARK);
+    box.style.visibility=v?'visible':'hidden';
+    el.classList.remove('hint','h2');
+  }
+  for(const m of hintMoves) cellAt(m.r,m.c).classList.add('hint', ...(turn===DARK?['h2']:[]));
+  popList.forEach(([r,c],i)=>{
+    const b=roof(r,c), cls=(i===0&&flickerFirst)?'flicker':'pop';
+    b.classList.remove('pop','flicker'); void b.offsetWidth;
+    b.style.animationDelay=(cls==='pop'?i*45:0)+'ms'; b.classList.add(cls);
+    setTimeout(()=>b.classList.remove(cls),(cls==='flicker'?1200:600)+i*45)});
+  $('n1').textContent=count(LIT); $('n2').textContent=count(DARK);
+  $('side1').classList.toggle('turn',!over&&turn===LIT);
+  $('side2').classList.toggle('turn',!over&&turn===DARK);
+  updateLabels(); updateUndo();
+}
+function updateLabels(){
+  const a=sideName(LIT), b=sideName(DARK);
+  if(mode==='battle'&&S.opp==='pvp'){ $('lab1').textContent=a; $('lab2').textContent=b }
+  else{ $('lab1').textContent=`あなた（${a}）`; $('lab2').textContent=`CPU Lv.${mode==='battle'?S.opp:5}（${b}）` }
+}
+const status=t=>$('status').innerHTML=t;
+function place(r,c,p,f){
+  B[r][c]=p;
+  f=[...f].sort((a,b)=>Math.hypot(a[0]-r,a[1]-c)-Math.hypot(b[0]-r,b[1]-c)); // 置いた場所から近い順に切り替わる
+  for(const [y,x] of f) B[y][x]=p;
+  const flick=p===LIT||S.theme==='neon';
+  render([[r,c],...f], flick);
+  if(flick) Snd.flicker(); else Snd.thud();
+  Snd.flips(f.length, p===LIT);
+}
+// 高層・中層・低層を混ぜてビル街らしく
+function rollH(){const x=Math.random(); return Math.round(x<.3?80+Math.random()*70 : x<.8?34+Math.random()*32 : 12+Math.random()*16)}
+function freshBoard(){ const b=Array.from({length:N},()=>Array(N).fill(EMPTY)); b[3][3]=LIT;b[4][4]=LIT;b[3][4]=DARK;b[4][3]=DARK; return b }
+function resetView(){
+  gid++; over=false; busy=false; boardEl.classList.remove('finale','dragging');
+  rx=56; rz=-32; applyAngle(); clearTags();
+  cells.forEach(el=>el.style.setProperty('--h',rollH()+'px'));
+}
+
+function tap(r,c){
+  if(over) return; // 決着後の操作は「街を眺める」で扱う
+  if(mode==='review') return reviewTap(r,c);
+  if(mode==='lesson') return lessonTap(r,c);
+  if(mode==='drill') return drillTap(r,c);
+  if(mode!=='battle'||!humanToMove()) return;
+  const f=flips(B,r,c,turn); if(!f.length) return;
+  hist.push({B:B.map(x=>x.slice()),turn}); if(hist.length>80) hist.shift();
+  place(r,c,turn,f); next();
+}
+
+/* ===== 対戦 ===== */
+function battleNew(){
+  mode='battle'; resetView(); B=freshBoard(); turn=LIT; hist=[];
+  layoutMode(); render(); saveGame();
+  const lv=level();
+  status(S.opp==='pvp' ? `${sideName(LIT)}の番からスタート。1台で交互に打ちます`
+    : `Lv.${lv}との成績：${REC[lv].w}勝 ${REC[lv].l}敗 ${REC[lv].d}分。あなたの番です`);
+}
+function next(){
+  const opp=-turn;
+  if(moves(B,opp).length) turn=opp;
+  else if(!moves(B,turn).length) return end();
+  else{ Snd.pass(); render(); saveGame(); status(`${who(opp)}は置ける場所がありません。<b>もう一度${who(turn)}の番</b>です`); if(isCpuGame()&&turn===DARK) cpuTurn(); return }
+  render(); saveGame();
+  if(isCpuGame()&&turn===DARK){ status('CPUが考えています…'); cpuTurn() }
+  else status(`${who(turn)}の番です`);
+}
+const who=p=>isCpuGame()?(p===LIT?'あなた':'CPU'):sideName(p);
+function cpuTurn(){
+  busy=true; render(); const g=gid;
+  setTimeout(()=>{
+    if(g!==gid) return;
+    const m=cpuPick(level(),DARK);
+    busy=false; place(m.r,m.c,DARK,m.f); next();
+  },2000+Math.random()*4000); // 人間らしく2〜6秒のばらつき
+}
+function end(){
+  over=true; busy=false; render();
+  const a=count(LIT), b=count(DARK), s=Math.sign(a-b);
+  let msg;
+  if(mode==='battle'&&S.opp==='pvp') msg=s?`<b>${a}対${b}で${sideName(s>0?LIT:DARK)}の勝ち！</b>`:`<b>${a}対${b}で引き分け</b>`;
+  else msg=s>0?`<b>${a}対${b}で勝ち！</b> 街はあなたの${sideName(LIT)}で輝いています`:s<0?`<b>${a}対${b}で負け。</b> 街は${sideName(DARK)}に染まりました`:`<b>${a}対${b}で引き分け</b>`;
+  if(isCpuGame()){ const r=REC[level()]; s>0?r.w++:s<0?r.l++:r.d++; Store.set('records',REC) }
+  if(mode==='battle') Store.del('game');
+  status(msg+'<br>ドラッグで街をくるくる回せます／タップで真上⇄斜めを切替');
+  if(mode==='review') coach(`<div class="hd"><span class="mv">対局終了</span></div>${s>0?`${a}対${b}で<b>あなたの勝ち</b>。`:s<0?`${a}対${b}でレベル5の勝ち。`:`${a}対${b}で引き分け。`}街をドラッグすると角度を変えて眺められます。タップで真上⇄斜めを切り替え。`+mobReport(),
+    [{label:'トレーニング一覧',fn:trainMenu},{label:'もう一局',primary:true,fn:reviewNew}]);
+  Snd.end(mode==='battle'&&S.opp==='pvp'?(s?1:0):s);
+  setTimeout(()=>{ if(over) boardEl.classList.add('finale') },400);
+}
+function undo(){
+  if(mode==='review') return reviewUndo();
+  if(mode!=='battle'||over||!hist.length) return;
+  gid++; busy=false;                    // 考え中のCPUも止める
+  const h=hist.pop(); B=h.B; turn=h.turn; clearTags();
+  render(); saveGame(); status(`1手戻しました。${who(turn)}の番です`);
+}
+function updateUndo(){
+  const u=$('undo');
+  if(mode==='review'){ u.hidden=false; u.disabled=busy||!rHist.length||(phase==='you'&&!over&&rHist.length<2); return }
+  u.hidden=!(mode==='battle'&&S.undo);
+  u.disabled=over||!hist.length;
+}
+function saveGame(){ if(mode==='battle'&&!over) Store.set('game',{opp:S.opp,B,turn,hist:hist.slice(-40)}) }
+
+/* ===== トレーニング共通 ===== */
+function coach(html,buttons){
+  coachEl.innerHTML=html+(buttons&&buttons.length?`<div class="row">${buttons.map((b,i)=>`<button data-i="${i}"${b.primary?' class="primary"':''}>${b.label}</button>`).join('')}</div>`:'');
+  coachEl.scrollTop=0;
+  (buttons||[]).forEach((b,i)=>coachEl.querySelector(`[data-i="${i}"]`).addEventListener('click',b.fn));
+  coachEl.querySelectorAll('details.more').forEach(d=>{ d.open=moreOpen; d.addEventListener('toggle',()=>moreOpen=d.open) });
+}
+let moreOpen=false;
+function clearTags(){ cells.forEach(el=>{ const t=el.querySelector('.tag'); t.textContent=''; t.className='tag'; el.classList.remove('mark','opp') }) }
+function showOpp(){ for(const m of moves(B,DARK)) cellAt(m.r,m.c).classList.add('opp') }
+const mobLine=(before,after,min,minSq,isMin)=>{
+  const d=after-before, ds=d>0?`<span class="up">+${d}</span>`:d<0?`<span class="down">${d}</span>`:'±0';
+  return `<p class="mob"><span class="dot"></span>相手の打てる場所 <b>${before}→${after}</b>（${ds}）${isMin?'・候補の中で最少':`・最少にできたのは <b>${minSq}</b> の${min}か所`}</p>`;
+};
+function showTags(an,played){
+  clearTags();
+  for(const c of an.cands){
+    const el=cellAt(c.r,c.c), t=el.querySelector('.tag'), g=AI.grade(an,c).g;
+    t.textContent=AI.lossText(an,c); t.className='tag t-g'+g+(c.i===played?' played':'');
+    if(c===an.best) el.classList.add('mark');
+  }
+}
+const list=rs=>'<ul>'+rs.map(x=>`<li>${x}</li>`).join('')+'</ul>';
+function analyzeLater(p,cb){ const g=gid; setTimeout(()=>{ if(g!==gid) return; cb(AI.analyze(B,p)) },60) }
+function layoutMode(){
+  const train=mode!=='battle';
+  appEl.classList.toggle('wide',train);
+  $('bwrap').classList.toggle('coords',train);
+  coachEl.hidden=!train;
+  $('opps').hidden=train;
+  $('mBattle').setAttribute('aria-pressed',!train); $('mTrain').setAttribute('aria-pressed',train);
+  document.querySelectorAll('#opps button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.opp===S.opp));
+  $('restart').hidden=mode==='menu'||mode==='lesson'||mode==='drill';
+  requestAnimationFrame(()=>Traffic.layout());
+}
+
+/* ===== トレーニング一覧 ===== */
+function trainMenu(){
+  mode='menu'; resetView(); B=freshBoard(); turn=LIT; layoutMode(); render();
+  const items=LESSONS.map((L,i)=>{
+    const got=(PROG[L.id]||[]).length, n=L.probs.length;
+    return `<button data-l="${i}"><span class="no">${i+1}</span><span class="tt">${L.title}</span><span class="stars" aria-label="${got}/${n}問クリア">${'★'.repeat(got)}${'☆'.repeat(n-got)}</span></button>`;
+  }).join('');
+  coach(`<div class="hd"><span class="mv">トレーニング</span></div><p>レッスンでレベル5の考え方を1テーマずつ学び、練習問題で「レベル5ならどこに打つか」を当てましょう。最後は解説付き対局で実戦に使います。</p>
+    <div class="menu">${items}<button data-l="drill"><span class="no">◎</span><span class="tt">ドリル：相手の手を減らす</span><span class="stars">${DRILL.n?DRILL.ok+'/'+DRILL.n+'問正解':''}</span></button><button data-l="review" class="primary" style="justify-content:center">解説付き対局（レベル5）</button></div>`);
+  coachEl.querySelectorAll('[data-l]').forEach(b=>b.addEventListener('click',()=>{ const v=b.dataset.l; if(v==='review') reviewNew(); else if(v==='drill') drillNew(); else lessonOpen(+v,0) }));
+}
+
+/* ===== レッスンと練習問題 ===== */
+function lessonOpen(li,k){
+  const L=LESSONS[li]; lesson={li,k};
+  mode='lesson'; phase='ask'; resetView(); youAn=null;
+  const s=L.probs[k]; B=Array.from({length:N},(_,r)=>Array.from({length:N},(_,c)=>({o:LIT,x:DARK}[s[r*8+c]]||EMPTY)));
+  turn=LIT; layoutMode(); render();
+  coach(`<div class="hd"><span class="who">レッスン${li+1}</span><span class="mv">${L.title}</span></div><div>${L.text}</div>
+    <div class="q">問題 ${k+1}／${L.probs.length}：${sideName(LIT)}の番です。レベル5ならどこに打つ？</div>`,
+    [{label:'レッスン一覧',fn:trainMenu}]);
+  analyzeLater(LIT,an=>{ if(mode==='lesson'&&phase==='ask') youAn=an });
+}
+function lessonTap(r,c){
+  if(phase!=='ask') return;
+  const f=flips(B,r,c,LIT); if(!f.length) return;
+  const L=LESSONS[lesson.li], an=youAn||AI.analyze(B,LIT), me=an.cands.find(x=>x.r===r&&x.c===c), gr=AI.grade(an,me), okk=gr.g<=1;
+  phase='answer';
+  place(r,c,LIT,f); showTags(an,me.i);
+  if(okk){ const p=new Set(PROG[L.id]||[]); p.add(lesson.k); PROG[L.id]=[...p]; Store.set('lessons',PROG); setTimeout(()=>Snd.good(),900) }
+  let html=`<div class="hd"><span class="pill g${gr.g}">${gr.label}</span><span class="who">${okk?'正解！':'おしい'}　あなたの答え</span><span class="mv">${AI.nm(me.i)}</span></div>${list(AI.reasons(an,me))}`;
+  if(me!==an.best) html+=`<div class="alt">レベル5なら <b>${AI.nm(an.best.i)}</b>（盤上の枠）。その理由：</div>${list(AI.reasons(an,an.best))}`;
+  html+='<div class="note">盤上の数字は、最善手（◎）と比べて何点損かを表します。好手（−3以内）までなら正解です。</div>';
+  const last=lesson.k>=L.probs.length-1;
+  coach(html,[
+    {label:'もう一度',fn:()=>lessonOpen(lesson.li,lesson.k)},
+    last?{label:'レッスン一覧',primary:true,fn:trainMenu}:{label:'次の問題',primary:true,fn:()=>lessonOpen(lesson.li,lesson.k+1)}
+  ]);
+}
+
+/* ===== ドリル：相手の手を減らす ===== */
+let DRILL=Store.get('drill',{n:0,ok:0}), drill=null, mobLog=[];
+function openness(b,f){ const seen=new Set(); for(const [y,x] of f) for(const [dy,dx] of DIRS){ const yy=y+dy,xx=x+dx; if(yy>=0&&yy<8&&xx>=0&&xx<8&&!b[yy][xx]) seen.add(yy*8+xx) } return seen.size }
+function drillGen(){
+  for(let t=0;t<80;t++){
+    const b=freshBoard(); let p=LIT, ply=0, plies=8+Math.floor(Math.random()*24), stuck=0;
+    while(stuck<2&&(ply<plies||p!==LIT)){
+      const ms=moves(b,p); if(!ms.length){ p=-p; stuck++; continue } stuck=0;
+      let m; if(Math.random()<.35) m=ms[Math.floor(Math.random()*ms.length)];
+      else { let bs=-1e9; for(const x of ms){ const sc=W[x.r][x.c]+Math.random()*8; if(sc>bs){bs=sc;m=x} } }
+      b[m.r][m.c]=p; for(const [y,x] of m.f) b[y][x]=p; p=-p; ply++;
+    }
+    if(p!==LIT||stuck) continue;
+    const ms=moves(b,LIT); if(ms.length<4) continue;
+    const cs=ms.map(m=>{ const nb=b.map(r=>r.slice()); nb[m.r][m.c]=LIT; for(const [y,x] of m.f) nb[y][x]=LIT;
+      return {r:m.r,c:m.c,f:m.f,opp:moves(nb,DARK).length,open:openness(nb,[[m.r,m.c],...m.f])} });
+    const mn=Math.min(...cs.map(c=>c.opp)), mx=Math.max(...cs.map(c=>c.opp));
+    if(mx-mn<3||cs.filter(c=>c.opp===mn).length>1) continue;
+    return {B:b, cs, mn, mx, done:false};
+  }
+  return null;
+}
+function drillNew(){ drill=drillGen(); if(!drill) return drillNew(); drillShow() }
+function drillShow(){
+  mode='drill'; phase='ask'; resetView(); B=drill.B.map(r=>r.slice()); turn=LIT; layoutMode(); render();
+  coach(`<div class="hd"><span class="who">ドリル</span><span class="mv">相手の手を減らす</span></div>
+    <p>打ったあと、相手（${sideName(DARK)}）の打てる場所が<b>一番少なくなる手</b>はどれ？</p>
+    <p class="mob"><span class="dot"></span>今、相手が打てる場所：<b>${moves(B,DARK).length}か所</b>　｜　成績 ${DRILL.ok}/${DRILL.n}問正解</p>`,
+    [{label:'トレーニング一覧',fn:trainMenu},{label:'別の問題',fn:drillNew}]);
+}
+function drillTap(r,c){
+  if(phase!=='ask') return;
+  const me=drill.cs.find(x=>x.r===r&&x.c===c); if(!me) return;
+  const before=moves(B,DARK).length, best=drill.cs.find(x=>x.opp===drill.mn), ok=me.opp===drill.mn;
+  if(!drill.done){ drill.done=true; DRILL.n++; if(ok) DRILL.ok++; Store.set('drill',DRILL) }
+  phase='answer'; place(r,c,LIT,me.f); clearTags(); showOpp();
+  for(const x of drill.cs){
+    const el=cellAt(x.r,x.c), t=el.querySelector('.tag'), d=x.opp-drill.mn;
+    t.textContent=x.opp; t.className='tag t-g'+(d===0?0:d<=1?1:d<=3?2:3)+(x===me?' played':'');
+    if(x===best) el.classList.add('mark');
+  }
+  if(ok) setTimeout(()=>Snd.good(),900);
+  let html=`<div class="hd"><span class="pill g${ok?0:me.opp-drill.mn<=1?1:me.opp-drill.mn<=3?2:3}">${ok?'正解':'おしい'}</span><span class="who">あなた</span><span class="mv">${AI.nm(me.r*8+me.c)}</span></div>`
+    +mobLine(before,me.opp,drill.mn,AI.nm(best.r*8+best.c),ok);
+  html+=more(`<p>盤上の数字は、そこに打ったときに相手が打てる場所の数です。赤い輪は、今の盤面で相手が打てるマスです。</p>
+    ${!ok&&best.open<me.open?`<p>返した石のまわりの空きマス（開放度）：あなたの手 <b>${me.open}</b>／${AI.nm(best.r*8+best.c)} <b>${best.open}</b>。空きマスに接した石が増えるほど、相手の足場が増えます。</p>`:''}
+    <p>赤い輪の数を、打つ前と後で見比べるのがコツです。新しく増えた輪は、あなたが返した石が作った相手の足場です。</p>`);
+  coach(html,[{label:'もう一度',fn:()=>{ drill.B=drill.B; drillShow() }},{label:'次の問題',primary:true,fn:drillNew}]);
+}
+function mobReport(){
+  if(mobLog.length<2) return '';
+  const L=mobLog, n=L.length, max=Math.max(4,...L.map(e=>Math.max(e.mine,e.gave)))+1;
+  const Wd=300,Hd=120,l=22,rgt=8,t=8,bt=18, X=i=>l+(n===1?0:i*(Wd-l-rgt)/(n-1)), Y=v=>t+(1-v/max)*(Hd-t-bt);
+  const path=k=>L.map((e,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(e[k]).toFixed(1)}`).join('');
+  const ticks=[0,Math.round(max/2),max].map(v=>`<line x1="${l}" x2="${Wd-rgt}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--roof-edge)" stroke-width=".6"/><text x="${l-4}" y="${Y(v)+3}" font-size="8" text-anchor="end" fill="var(--muted)">${v}</text>`).join('');
+  const step=Math.max(1,Math.ceil(n/8)), xl=L.map((e,i)=>i%step?'':`<text x="${X(i)}" y="${Hd-5}" font-size="8" text-anchor="middle" fill="var(--muted)">${i+1}</text>`).join('');
+  const bad=L.map((e,i)=>({...e,k:i+1,g:e.gave-e.best})).filter(e=>e.g>=3);
+  const marks=bad.map(e=>`<circle cx="${X(e.k-1)}" cy="${Y(e.gave)}" r="3.2" fill="var(--opp)"/>`).join('');
+  const avg=k=>(L.reduce((a,e)=>a+e[k],0)/n).toFixed(1);
+  const worst=[...bad].sort((a,b)=>b.g-a.g).slice(0,3);
+  return `<div class="q">打てる場所のふり返り</div>
+   <div class="legend"><span><i style="background:var(--lamp)"></i>あなたの打てる場所</span><span><i style="background:var(--opp)"></i>相手に与えた打てる場所</span><span><i style="background:var(--muted)"></i>最少にできた数</span></div>
+   <svg class="chart" viewBox="0 0 ${Wd} ${Hd}" role="img" aria-label="手ごとの打てる場所の数">${ticks}${xl}
+    <path d="${path('best')}" fill="none" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="3 3"/>
+    <path d="${path('mine')}" fill="none" stroke="var(--lamp)" stroke-width="1.8"/>
+    <path d="${path('gave')}" fill="none" stroke="var(--opp)" stroke-width="1.8"/>${marks}</svg>
+   <p class="note">横軸はあなたの何手目か。相手に与えた打てる場所は平均 <b>${avg('gave')}か所</b>（毎回最少の手なら平均 ${avg('best')}か所）。</p>
+   ${worst.length?`<p>相手に手を与えすぎた手（赤い点）：</p><ul>${worst.map(e=>`<li>${e.k}手目 <b>${e.sq}</b>：相手に${e.gave}か所（最少なら${e.best}か所）</li>`).join('')}</ul>`:'<p>相手に手を与えすぎた手はありませんでした。</p>'}`;
+}
+
+/* ===== 解説付き対局（レベル5）：1往復1タップ、要点1行＋「くわしく」 ===== */
+const more=inner=>inner?`<details class="more"><summary>くわしく</summary>${inner}</details>`:'';
+let rHist=[]; // あなたの番が来るたびの盤面
+function reviewNew(){ mode='review'; rHist=[]; mobLog=[]; resetView(); B=freshBoard(); layoutMode(); toYou('') }
+// 戻る：自分が打った直後ならその手を、自分の番なら（レベル5の手ごと）1つ前の自分の手を取り消す
+function reviewUndo(){
+  if(busy) return;
+  let target;
+  if(phase==='you'&&!over){ if(rHist.length<2) return; rHist.pop(); target=rHist.pop() }
+  else { if(!rHist.length) return; target=rHist.pop() }
+  gid++; over=false; boardEl.classList.remove('finale','dragging'); clearTags();
+  B=target.map(r=>r.slice());
+  toYou('<p>1手戻しました。別の手を試してみましょう。</p>');
+  mobLog=mobLog.filter(e=>e.idx<rHist.length);
+}
+function toYou(prev){
+  phase='you'; turn=LIT; busy=false; youAn=null; rHist.push(B.map(r=>r.slice())); render();
+  coach((prev||'')+`<div class="q">あなたの番です${prev?'':'。打った手をレベル5が採点します'}</div>`,[{label:'トレーニング一覧',fn:trainMenu}]);
+  analyzeLater(LIT,an=>{ if(mode==='review'&&phase==='you') youAn=an });
+}
+function reviewTap(r,c){
+  if(phase==='youReview') return afterYou();   // 盤をタップしても先へ進める
+  if(phase!=='you') return;
+  const f=flips(B,r,c,LIT); if(!f.length) return;
+  const an=youAn||AI.analyze(B,LIT), me=an.cands.find(x=>x.r===r&&x.c===c), gr=AI.grade(an,me), rs=AI.reasons(an,me);
+  const before=moves(B,DARK).length, minC=an.cands.reduce((a,b)=>b.opMob<a.opMob?b:a);
+  mobLog=mobLog.filter(e=>e.idx<rHist.length);
+  mobLog.push({idx:rHist.length, sq:AI.nm(me.i), mine:an.cands.length, gave:me.opMob, best:minC.opMob});
+  phase='youReview';
+  place(r,c,LIT,f); showTags(an,me.i); showOpp();
+  let html=`<div class="hd"><span class="pill g${gr.g}">${gr.label}</span><span class="who">あなた</span><span class="mv">${AI.nm(me.i)}</span></div><p>${rs[0]}</p>`+mobLine(before,me.opMob,minC.opMob,AI.nm(minC.i),me.opMob===minC.opMob);
+  let det=rs.length>1?list(rs.slice(1)):'';
+  if(me!==an.best){
+    const br=AI.reasons(an,an.best);
+    html+=`<p class="alt">レベル5なら <b>${AI.nm(an.best.i)}</b>（盤上の枠）：${br[0]}</p>`;
+    if(br.length>1) det+=`<div class="alt">${AI.nm(an.best.i)}のほかの理由</div>${list(br.slice(1))}`;
+  }
+  det+='<div class="note">盤上の数字は、最善手（◎）と比べて何点損かを表します。</div>';
+  coach(html+more(det),[{label:'レベル5の番へ',primary:true,fn:afterYou}]);
+}
+function afterYou(){
+  if(phase!=='youReview') return;
+  clearTags();
+  if(moves(B,DARK).length) return cpuReview();
+  if(moves(B,LIT).length){ Snd.pass(); return toYou('<p>レベル5は打てる場所がないので<b>パス</b>。</p>') }
+  end();
+}
+function cpuReview(){
+  phase='cpu'; turn=DARK; busy=true; render();
+  coach('<span class="thinking">レベル5が読んでいます…</span>');
+  const g=gid;
+  setTimeout(()=>{
+    if(g!==gid) return;
+    const an=AI.analyze(B,DARK), m=an.best; busy=false;
+    place(m.r,m.c,DARK,m.f); clearTags(); cellAt(m.r,m.c).classList.add('mark');
+    const rs=AI.reasons(an,m), others=an.cands.filter(x=>x!==m).sort((a,b)=>b.score-a.score).slice(0,2);
+    const html=`<div class="hd"><span class="who">レベル5</span><span class="mv">${AI.nm(m.i)}</span></div><p>${rs[0]}</p>`;
+    const det=(rs.length>1?list(rs.slice(1)):'')+(others.length?`<div class="alt">ほかの候補と比べると</div><ul>${others.map(o=>`<li><b>${AI.nm(o.i)}</b>（${AI.lossText(an,o)}）${AI.reasons(an,o)[0]}</li>`).join('')}</ul>`:'');
+    const prev=html+more(det);
+    if(moves(B,LIT).length) return toYou(prev);
+    if(moves(B,DARK).length){
+      Snd.pass(); phase='youReview'; turn=LIT; render();
+      coach(prev+'<p>あなたは打てる場所がないので<b>パス</b>。</p>',[{label:'レベル5の番へ',primary:true,fn:afterYou}]);
+      return;
+    }
+    end();
+  },350);
+}
+
+/* ===== 決着後に街を眺める：ドラッグで回転・傾き、タップで真上⇄斜め ===== */
+let drag=null;
+const stageEl=$('stage');
+function applyAngle(){ boardEl.style.setProperty('--rx',rx+'deg'); boardEl.style.setProperty('--rz',rz+'deg') }
+stageEl.addEventListener('pointerdown',e=>{ if(over) drag={x:e.clientX,y:e.clientY,rx,rz,moved:false,id:e.pointerId} });
+stageEl.addEventListener('pointermove',e=>{
+  if(!drag||e.pointerId!==drag.id) return;
+  const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+  if(!drag.moved&&Math.hypot(dx,dy)<6) return;
+  if(!boardEl.classList.contains('finale')) return;
+  if(!drag.moved){ drag.moved=true; boardEl.classList.add('dragging'); try{stageEl.setPointerCapture(e.pointerId)}catch(_){} }
+  rz=drag.rz+dx*.45;                              // 左右で街をくるくる回す
+  rx=Math.max(0,Math.min(78,drag.rx-dy*.35));     // 上下で見下ろす角度
+  applyAngle();
+});
+stageEl.addEventListener('pointerup',e=>{
+  if(!drag||e.pointerId!==drag.id) return;
+  const moved=drag.moved; drag=null; boardEl.classList.remove('dragging');
+  if(!moved&&over) boardEl.classList.toggle('finale');
+});
+stageEl.addEventListener('pointercancel',e=>{ if(drag&&e.pointerId===drag.id){ drag=null; boardEl.classList.remove('dragging') } });
+
+/* ===== 設定 ===== */
+function applyTheme(){
+  document.body.classList.toggle('neon',S.theme==='neon');
+  document.querySelectorAll('#themeSeg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.themeV===S.theme));
+}
+function syncSheet(){
+  applyTheme();
+  $('swSound').setAttribute('aria-pressed',S.sound); $('swHints').setAttribute('aria-pressed',S.hints); $('swUndo').setAttribute('aria-pressed',S.undo);
+  $('recTable').innerHTML='<tr><th>相手</th><th>勝</th><th>敗</th><th>分</th><th>勝率</th></tr>'+[1,2,3,4,5].map(i=>{
+    const r=REC[i], n=r.w+r.l+r.d; return `<tr><td>Lv.${i}</td><td>${r.w}</td><td>${r.l}</td><td>${r.d}</td><td>${n?Math.round(r.w/n*100)+'%':'—'}</td></tr>`}).join('');
+  const rb=$('resetRec'); rb.textContent='成績をリセット'; rb.dataset.armed='';
+}
+$('openSet').addEventListener('click',()=>{ syncSheet(); $('sheet').hidden=false });
+$('closeSet').addEventListener('click',()=>$('sheet').hidden=true);
+$('sheet').addEventListener('click',e=>{ if(e.target.id==='sheet') $('sheet').hidden=true });
+document.querySelectorAll('#themeSeg button').forEach(b=>b.addEventListener('click',()=>{
+  S.theme=b.dataset.themeV; saveSettings(); applyTheme(); Snd.setTheme(S.theme); render();
+  if(mode==='battle'&&!over) status(`${who(turn)}の番です`);
+}));
+$('swSound').addEventListener('click',()=>{ S.sound=!S.sound; saveSettings(); unlocked=true; Snd.setOn(S.sound); syncSheet() });
+$('swHints').addEventListener('click',()=>{ S.hints=!S.hints; saveSettings(); syncSheet(); render() });
+$('swUndo').addEventListener('click',()=>{ S.undo=!S.undo; saveSettings(); syncSheet(); render() });
+$('resetRec').addEventListener('click',e=>{
+  const b=e.currentTarget;
+  if(!b.dataset.armed){ b.dataset.armed='1'; b.textContent='本当にリセットする'; return }
+  for(let i=1;i<=5;i++) REC[i]={w:0,l:0,d:0}; Store.set('records',REC); syncSheet();
+});
+
+/* ===== ボタン ===== */
+$('restart').addEventListener('click',()=>{ if(mode==='review') reviewNew(); else battleNew() });
+$('undo').addEventListener('click',undo);
+$('mBattle').addEventListener('click',()=>{ if(mode!=='battle') resumeOrNew() });
+$('mTrain').addEventListener('click',()=>{ if(mode==='battle'){ saveGame(); trainMenu() } });
+document.querySelectorAll('#opps button').forEach(b=>b.addEventListener('click',()=>{ S.opp=b.dataset.opp; saveSettings(); battleNew() }));
+// 音は最初のタップで鳴り始める（ブラウザの決まり）
+let unlocked=false;
+document.addEventListener('pointerdown',e=>{ if(unlocked||e.target.id==='swSound') return; unlocked=true; if(S.sound) Snd.unlock() },{capture:true});
+
+/* ===== 途中のゲームから再開 ===== */
+function resumeOrNew(){
+  const g=Store.get('game',null);
+  if(g&&g.B&&g.opp===S.opp){
+    mode='battle'; resetView(); B=g.B; turn=g.turn; hist=g.hist||[]; layoutMode(); render();
+    if(isCpuGame()&&turn===DARK){ status('続きから再開。CPUが考えています…'); cpuTurn() }
+    else status(`続きから再開しました。${who(turn)}の番です`);
+  } else battleNew();
+}
+
+const LESSONS=[{"id": "corner", "title": "角は最強のマス", "text": "盤の四すみ（<b>a1・h1・a8・h8</b>）が角です。角の石ははさまれる方向がないので、<b>二度と返されません</b>。角を取ると、そこから辺に沿って返されない石を増やしていけます。角が取れる場面では、まず角を取れないか考えましょう。", "probs": ["....x...x..x....x.xo.o..xxoooo.xxoxxxxxxo.ooo..x...o......o.....", "...oooo...xxxxox.x.o..oxxxoxoxxo.x.xxx..oxxxx...................", "...ooooo..xxoxooox.o.ooooooxxoooooxxxx.ooxoxxx..x.oo.x....ooox.."]}, {"id": "xsq", "title": "Xマスに注意", "text": "角の斜め隣（<b>b2・g2・b7・g7</b>）をXマスといいます。角が空いているうちにXマスに打つと、相手がその角に打てるようになりやすく、<b>角を渡す原因</b>になります。たくさん返せる手に見えても、Xマスはできるだけ後回しにするのが基本です。", "probs": ["..........................xxx.....xoo.....xo....................", "..................o.......xooo....xxox....xxx...................", "................x.o......xoooo....xxox....xxx..................."]}, {"id": "mob", "title": "相手の打てる場所を減らす", "text": "リバーシでは<b>打てる場所が少ない方が苦しく</b>なります。打てる場所がなくなると、XマスやCマスのような悪いマスに打たされたり、パスしたりするからです。手を選ぶときは「打ったあと、相手は何か所に打てるか」を数えてみましょう。", "probs": ["..................x.......oxo.....oxx.....ox....................", "..................x......xxxxx....ooxo....ooo...................", "o.xxx...o.xo.x..ooooxxxoooxxox.xooxxxoxxoxxxxxxx...o......ooo..."]}, {"id": "open", "title": "開放度の低い手を選ぶ", "text": "<b>開放度</b>とは、返した石のまわりにある空きマスの数です。空きマスに接した石は、相手がそこから打つ足場になります。まわりが埋まっている石だけを返す<b>開放度の低い手</b>は、相手に新しい打ち場所を与えにくい良い手です。", "probs": ["................o.x......oxxxx....ooxxx...ooo...................", "................x.ox.....xoxoo....xxooo...xxx...................", "x...o...x..o....x.ox.x..xoxxxx.oxxoooooox.xxx..o...x......x....."]}, {"id": "few", "title": "序盤は少なく返す", "text": "序盤〜中盤は、<b>たくさん返すほど得とは限りません</b>。自分の石が増えると、相手がはさめる石も、相手の打てる場所も増えてしまいます。石の数は最後に多ければよいので、序盤はむしろ少なく返し、自分の石を内側に固めるのがコツです。", "probs": ["..................o.......xox.....xxxx....xo....................", "..................x.......oxxx....ooxo....ox....................", "................o.xo.....oxoxx....ooxxx...oox......x............"]}, {"id": "stable", "title": "確定石を増やす", "text": "<b>確定石</b>は、もう二度と返されない石です。角と、角からすき間なくつながる辺の石が代表的です。確定石は最後まで自分の石として数えられるので、中盤から終盤にかけて少しずつ増やしていくと勝ちに近づきます。", "probs": ["...ooooo..xxoxoo.x.o.oooxxoxxxoo.xxxxx.ooxxxo........o..........", "..ooo..o..oox..oxxoooooo.xxooooo.xoxxoooxxoxxooo.oox.oo.oooooo.x", "oooooo..o.ooo...oxxxxxxxoxxoxxxxoxxoxx.ooxxxxx....xox.....xxxx.."]}, {"id": "endgame", "title": "終盤は読み切り", "text": "残りのマスが少なくなったら、感覚ではなく<b>最後まで読み切る</b>のが一番確実です。目安は、空きマスが<b>奇数個</b>の区画に先に打つこと（偶数理論）。最後の1マスを自分が打ちやすくなり有利です。レベル5は残り10マスから全ての手順を読み切っています。", "probs": ["ooxxxxx.o.oxxxx.ooooxoxooooxoxxxoooooxxxoxxoxxxx..ooox...ooooox.", "..xxxx..x.xxxxo.oxoxxoxoooxooxxoooooxoxooooxxoxoo.x.xoxo.xxxxxxx", "..oooox.o.oooxx.xoxoxxoxxxoxxooxxxxxoxoxxxxooxoxx.o.oxox.ooooooo"]}];
+
+applyTheme();
+resumeOrNew();
+Traffic.start();
+</script>
+
+</body>
+</html>
